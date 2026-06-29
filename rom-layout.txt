@@ -1,0 +1,28 @@
+c6300bd: Netgear C6300BD
+========================
+pssig                 0xa0eb
+blsig                 0x0000
+
+ram                   0x80000000 - 0x8fffffff  (   256 MB)  RW
+--------------------------------------------------------------
+bootloader            0x83f80000 - 0x83f9ffff  (   128 KB)
+
+nvram                 0x00000000 - 0x0007ffff  (   512 KB)  RO
+--------------------------------------------------------------
+bootloader            0x00000000 - 0x0000ffff  (    64 KB)
+permnv                0x00010000 - 0x0002ffff  (   128 KB)
+vennv                 0x00030000 - 0x0003ffff  (    64 KB)
+dynnv                 0x00040000 - 0x0007ffff  (   256 KB)
+
+flash                 0x00000000 - 0x07ffffff  (   128 MB)  RO
+--------------------------------------------------------------
+linuxapps             0x00000000 - 0x023bffff  ( 36608 KB)
+image1                0x023c0000 - 0x02cbffff  (     9 MB)
+image2                0x02cc0000 - 0x035bffff  (     9 MB)
+linux                 0x035c0000 - 0x059bffff  (    36 MB)
+linuxkfs              0x059c0000 - 0x07dbffff  (    36 MB)
+dhtml                 0x07dc0000 - 0x07ffffff  (  2304 KB)
+
+"nvram" is the 8-Pin SPI flash.
+"flash" is the NAND flash.
+"linux" and "linuxkfs" are two Linux images, but only the first one is used.

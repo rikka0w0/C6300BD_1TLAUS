@@ -1,0 +1,93 @@
+--- a/src/sshpty.c
++++ b/src/sshpty.c
+@@ -38,6 +38,10 @@
+ #define O_NOCTTY 0
+ #endif
+ 
++#ifndef DROPBEAR_ALLOW_RO_BSDPTY
++#define DROPBEAR_ALLOW_RO_BSDPTY 0
++#endif
++
+ /*
+  * Allocates and opens a pty.  Returns 0 if no pty could be allocated, or
+  * nonzero if a pty was successfully allocated.  On success, open file
+@@ -249,13 +253,30 @@
+ {
+ 	if (chown(tty_name, (uid_t) 0, (gid_t) 0) < 0
+ 			&& (errno != ENOENT)) {
+-		dropbear_log(LOG_ERR,
++#if DROPBEAR_ALLOW_RO_BSDPTY
++		if (errno == EROFS) {
++			dropbear_log(LOG_WARNING,
++				"leaving read-only pty %.100s ownership unchanged",
++				tty_name);
++		} else
++#endif
++		{
++			dropbear_log(LOG_ERR,
+ 				"chown %.100s 0 0 failed: %.100s", tty_name, strerror(errno));
++		}
+ 	}
+ 	if (chmod(tty_name, (mode_t) 0666) < 0
+ 			&& (errno != ENOENT)) {
+-		dropbear_log(LOG_ERR,
++#if DROPBEAR_ALLOW_RO_BSDPTY
++		if (errno == EROFS) {
++			dropbear_log(LOG_WARNING,
++				"leaving read-only pty %.100s mode unchanged", tty_name);
++		} else
++#endif
++		{
++			dropbear_log(LOG_ERR,
+ 			"chmod %.100s 0666 failed: %.100s", tty_name, strerror(errno));
++		}
+ 	}
+ }
+ 
+@@ -359,6 +380,9 @@
+ 	gid_t gid;
+ 	mode_t mode;
+ 	struct stat st;
++#if DROPBEAR_ALLOW_RO_BSDPTY
++	int ro_bsdpty_ok = 0;
++#endif
+ 
+ 	/* Determine the group to make the owner of the tty. */
+ 	grp = getgrnam("tty");
+@@ -380,10 +404,22 @@
+ 				tty_name, strerror(errno));
+ 	}
+ 
++#if DROPBEAR_ALLOW_RO_BSDPTY
++	ro_bsdpty_ok = S_ISCHR(st.st_mode)
++		&& (pw->pw_uid == 0 || st.st_uid == pw->pw_uid);
++#endif
++
+ 	/* Allow either "tty" gid or user's own gid. On Linux with openpty()
+ 	 * this varies depending on the devpts mount options */
+ 	if (st.st_uid != pw->pw_uid || !(st.st_gid == gid || st.st_gid == pw->pw_gid)) {
+ 		if (chown(tty_name, pw->pw_uid, gid) < 0) {
++#if DROPBEAR_ALLOW_RO_BSDPTY
++			if (errno == EROFS && ro_bsdpty_ok) {
++				dropbear_log(LOG_WARNING,
++					"leaving read-only BSD pty %.100s ownership unchanged",
++					tty_name);
++			} else
++#endif
+ 			if (errno == EROFS &&
+ 			    (st.st_uid == pw->pw_uid || st.st_uid == 0)) {
+ 				dropbear_log(LOG_ERR,
+@@ -400,6 +436,13 @@
+ 
+ 	if ((st.st_mode & (S_IRWXU|S_IRWXG|S_IRWXO)) != mode) {
+ 		if (chmod(tty_name, mode) < 0) {
++#if DROPBEAR_ALLOW_RO_BSDPTY
++			if (errno == EROFS && ro_bsdpty_ok) {
++				dropbear_log(LOG_WARNING,
++					"leaving read-only BSD pty %.100s mode unchanged",
++					tty_name);
++			} else
++#endif
+ 			if (errno == EROFS &&
+ 			    (st.st_mode & (S_IRGRP | S_IROTH)) == 0) {
+ 				dropbear_log(LOG_ERR,
