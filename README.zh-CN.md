@@ -99,15 +99,9 @@ mkdir -p rootfs.fakeroot/etc/dropbear
 
 加入启动脚本:
 ```bash
-cat >> ./rootfs.fakeroot/etc/init.d/rcS <<'EOF'
-
-# Start Dropbear SSH server
-mkdir -p /var/run
-/usr/sbin/dropbear \
-  -r /etc/dropbear/dropbear_rsa_host_key \
-  -r /etc/dropbear/dropbear_ed25519_host_key \
-  -p 22
-EOF
+echo '/bin/startup.sh' >> ./rootfs.fakeroot/etc/init.d/rcS
+cp -v ../startup.sh ./rootfs.fakeroot/bin/
+chmod +x ./rootfs.fakeroot/bin/startup.sh
 ```
 
 ## 重新打包Linux侧固件

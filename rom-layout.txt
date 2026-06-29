@@ -26,3 +26,6 @@ dhtml                 0x07dc0000 - 0x07ffffff  (  2304 KB)
 "nvram" is the 8-Pin SPI flash.
 "flash" is the NAND flash.
 "linux" and "linuxkfs" are two Linux images, but only the first one is used.
+
+See also:
+https://github.com/jclehner/bcm2-utils/blob/451a842f9c348e31c6c969c9b1b8f9ae72b0c782/profiledef.c#L355
