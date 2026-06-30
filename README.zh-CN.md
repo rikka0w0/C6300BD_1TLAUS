@@ -5,6 +5,7 @@
  * 利用闲置的linuxapps分区存放更多数据
  * SSH进入Linux侧之后访问eCos侧的Shell
  * 远程重启
+ * 远程更新Linux侧固件
 
 __本教程需要自备一个USB-TTL转接线用于访问串口控制台，应用patch需要Linux系统(WSL2已测试)__
 
@@ -249,6 +250,17 @@ Destination image
 用户名和密码分别是`admin`和`password`。
 
 __此方法看不到eCos启动时的日志，也看不到Bootloader的菜单！__
+
+# 在eCos Shell中更新Linux侧固件
+
+经过`patch-ecos-iphal-dload-stack.py`（`make pack-ecos`会自动调用）patch过的eCos Shell可以从LAN侧甚至WAN侧指定TFTP服务器去下载固件。
+
+也就是说，可以先从公网SSH进入Linux侧，然后在Linux侧telnet到eCos Shell，然后执行如下命令刷新Linux固件，重启后生效：
+```
+/ip_hal/dload (4) -i 3 192.168.0.3  C6300BD_1TLAUS_K2630_PATCHED.bin
+/reset
+```
+上面`(4)`对应LAN侧。如果是WAN侧则需要换成`(3)`。
 
 # 相关资料
 1. [NetGear GPL源码](https://archive.org/download/netgearfirmwaresgpl)

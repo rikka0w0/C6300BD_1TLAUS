@@ -19,8 +19,10 @@ $(STOCK_ECOS_IMAGE): $(PROGRAMSTORE) $(ECOS_FIRMWARE_PACK_IN) | $(BUILD_ROOT)
 
 unpack-ecos: $(STOCK_ECOS_IMAGE)
 
-$(PATCHED_ECOS_IMAGE): $(STOCK_ECOS_IMAGE) $(ROOT_DIR)/patch-ecos-vsif-telnet-enable.py | $(BUILD_ROOT)
-	"$(ROOT_DIR)/patch-ecos-vsif-telnet-enable.py" "$(STOCK_ECOS_IMAGE)" -o "$@" -f
+$(PATCHED_ECOS_IMAGE): $(STOCK_ECOS_IMAGE) $(ROOT_DIR)/patch-ecos-vsif-telnet-enable.py $(ROOT_DIR)/patch-ecos-iphal-dload-stack.py | $(BUILD_ROOT)
+	"$(ROOT_DIR)/patch-ecos-vsif-telnet-enable.py" "$(STOCK_ECOS_IMAGE)" -o "$@.tmp" -f
+	"$(ROOT_DIR)/patch-ecos-iphal-dload-stack.py" "$@.tmp" -o "$@" -f
+	rm -f "$@.tmp"
 
 patch-ecos: $(PATCHED_ECOS_IMAGE)
 
@@ -39,5 +41,6 @@ pack-ecos: $(PATCHED_ECOS_FIRMWARE)
 clean-ecos:
 	rm -f \
 		"$(STOCK_ECOS_IMAGE)" \
+		"$(PATCHED_ECOS_IMAGE).tmp" \
 		"$(PATCHED_ECOS_IMAGE)" \
 		"$(PATCHED_ECOS_FIRMWARE)"
