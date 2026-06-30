@@ -135,7 +135,16 @@ $(LINUXAPPS_IMAGE): $(LINUXAPPS_DIR) $(LINUXAPPS_FILES) | $(BUILD_ROOT)
 		-b "$(LINUXAPPS_BLOCK_SIZE)" \
 		-mkfs-time "$(LINUXAPPS_MKFS_TIME)" \
 		-all-root
+
+	# 2. Fix the SquashFS magic
+	# Broadcom's magic is shsq: 73 68 73 71
+	# Standard little-endian SquashFS magic is hsqs: 68 73 71 73
 	printf '\163\150\163\161' | dd of="$@" bs=1 seek=0 count=4 conv=notrunc status=none
+
+	# 3. Fix the compression field
+	# In the SquashFS superblock, offset 0x14 is the compression field
+	# The original squashfs puts 02 00 here, which means LZMA
+	# The actual data blocks are LZMA-Alone, but the vendor format requires 01 00, which means gzip...
 	printf '\001\000' | dd of="$@" bs=1 seek=$$((0x14)) count=2 conv=notrunc status=none
 
 clean-linuxapps:
