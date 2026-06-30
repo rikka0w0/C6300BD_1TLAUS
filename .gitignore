@@ -1,4 +1,4 @@
 downloads
 build
-out
-/ProgramStore
+/rootfs.merge/etc/dropbear
+/downloads/ProgramStore
