@@ -28,9 +28,14 @@ mkdir -p /var/run
 
 # Mount extra SquashFS, if present
 if [ "$(dd if=/dev/mtdblock3 bs=1 count=4 2>/dev/null)" = "shsq" ]; then
-    echo "Mounting /mnt/mtdblock3: squashfs magic found"
-    mkdir -p /mnt/mtdblock3
-    mount -t squashfs /dev/mtdblock3 /mnt/mtdblock3
+    if [ "$(dd if=/dev/mem bs=1 skip=$((0x07FFFFF0)) count=16 2>/dev/null)" = "C6300BD_NO_MTD3!" ]; then
+        echo "Skipping /mnt/mtdblock3 mount: skip marker found"
+        dd if=/dev/zero of=/dev/mem bs=1 seek=$((0x07FFFFF0)) count=16 conv=notrunc 2>/dev/null || true
+    else
+        echo "Mounting /mnt/mtdblock3: squashfs magic found"
+        mkdir -p /mnt/mtdblock3
+        mount -t squashfs /dev/mtdblock3 /mnt/mtdblock3
+    fi
 fi
 
 # Collect ssh keys
@@ -49,4 +54,8 @@ fi
 
 [ -f /root/.ssh/authorized_keys ] && chmod 600 /root/.ssh/authorized_keys
 
-[ -f /mnt/mtdblock3/startup.sh ] && /mnt/mtdblock3/startup.sh
+if [ -f /mnt/mtdblock3/startup.sh ]; then
+    /mnt/mtdblock3/startup.sh || true
+fi
+
+exit 0

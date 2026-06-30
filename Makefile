@@ -22,13 +22,18 @@ ROOTFS_MERGE := $(ROOT_DIR)/rootfs.merge
 ROOTFS_MERGE_FILES := $(shell find "$(ROOTFS_MERGE)" -mindepth 1 -print 2>/dev/null)
 PATCHED_LINUX_ROOTFS := $(BUILD_ROOT)/patched-linux-rootfs.bin
 PATCHED_FIRMWARE := $(BUILD_ROOT)/C6300BD_1TLAUS_K2630_PATCHED.bin
+LINUXAPPS_DIR := $(ROOT_DIR)/linuxapps
+LINUXAPPS_FILES := $(shell find "$(LINUXAPPS_DIR)" -mindepth 1 -print 2>/dev/null)
+LINUXAPPS_IMAGE := $(BUILD_ROOT)/mtdblock3.bin
+LINUXAPPS_BLOCK_SIZE ?= 65536
+LINUXAPPS_MKFS_TIME ?= 1401088145
 ROOTFS_HOST_COMMANDS := mksquashfs unsquashfs fakeroot
 .DEFAULT_GOAL := pack-firmware
 
 include $(ROOT_DIR)/common.mk
 include $(ROOT_DIR)/dropbear.mk
 
-.PHONY: check-host-packages clean clean-linux
+.PHONY: check-host-packages clean clean-linux clean-linuxapps
 
 $(BUILD_ROOT) $(DOWNLOAD_DIR):
 	mkdir -p $@
@@ -36,7 +41,7 @@ $(BUILD_ROOT) $(DOWNLOAD_DIR):
 check-host-packages:
 	$(call check-host-commands,$(ROOTFS_HOST_COMMANDS))
 
-clean: clean-linux clean-dropbear clean-dropbear-host
+clean: clean-linux clean-dropbear clean-dropbear-host clean-linuxapps
 
 clean-linux:
 	rm -rf \
@@ -85,14 +90,14 @@ unpack-linux-rootfs: $(ROOTFS_FAKEROOT_STAMP)
 $(PATCHED_LINUX_ROOTFS): $(ROOTFS_FAKEROOT_STAMP) $(ROOTFS_MERGE) $(ROOTFS_MERGE_FILES) | $(BUILD_ROOT) check-host-packages
 	cp -a "$(ROOTFS_MERGE)/." "$(ROOTFS_FAKEROOT)/"
 
-	# Enable telnet if requested, and ensure /bin/startup.sh is called from rcS
-	# /bin/startup.sh is our own startup script
+	# Enable telnet if requested, and ensure /opt/startup.sh is called from rcS
+	# /opt/startup.sh is our own startup script
 	if [ "$(ENABLE_TELNET)" = "1" ]; then \
 		sed -i "s|^\([[:space:]]*\)grep nouart /proc/cmdline > /dev/null|\1/bin/true # grep nouart /proc/cmdline > /dev/null|" \
 			"$(ROOTFS_FAKEROOT)/etc/init.d/rcS"; \
 	fi
-	if ! sed -n '\|^/bin/startup\.sh$$|q 0; $$q 1' "$(ROOTFS_FAKEROOT)/etc/init.d/rcS"; then \
-		sed -i '$$a/bin/startup.sh' "$(ROOTFS_FAKEROOT)/etc/init.d/rcS"; \
+	if ! sed -n '\|^/opt/startup\.sh$$|q 0; $$q 1' "$(ROOTFS_FAKEROOT)/etc/init.d/rcS"; then \
+		sed -i '$$a/opt/startup.sh' "$(ROOTFS_FAKEROOT)/etc/init.d/rcS"; \
 	fi
 
 	# Install dropbear binaries
@@ -103,6 +108,10 @@ endif
 	"$(ROOT_DIR)/c6300bd-sqfs-pack.sh" -f "$(ROOTFS_FAKEROOT)" "$@"
 
 pack-linux-rootfs: $(PATCHED_LINUX_ROOTFS)
+
+ifeq ($(ENABLE_DROPBEAR),1)
+$(PATCHED_LINUX_ROOTFS): $(DROPBEAR_MULTI) | dropbearkey-host-gen-hostkey
+endif
 
 $(PATCHED_FIRMWARE): $(PROGRAMSTORE) $(PATCHED_LINUX_KERNEL) $(PATCHED_LINUX_ROOTFS) | $(BUILD_ROOT)
 	"$(PROGRAMSTORE)" \
@@ -116,6 +125,19 @@ $(PATCHED_FIRMWARE): $(PROGRAMSTORE) $(PATCHED_LINUX_KERNEL) $(PATCHED_LINUX_ROO
 
 pack-firmware: $(PATCHED_FIRMWARE)
 
-ifeq ($(ENABLE_DROPBEAR),1)
-$(PATCHED_LINUX_ROOTFS): $(DROPBEAR_MULTI) | dropbearkey-host-gen-hostkey
-endif
+$(LINUXAPPS_IMAGE): $(LINUXAPPS_DIR) $(LINUXAPPS_FILES) | $(BUILD_ROOT)
+	@command -v mksquashfs >/dev/null 2>&1 || { echo "error: missing required host command(s): mksquashfs" >&2; exit 1; }
+	rm -f "$@"
+	mksquashfs "$(LINUXAPPS_DIR)" "$@" \
+		-noappend \
+		-comp lzma \
+		-b "$(LINUXAPPS_BLOCK_SIZE)" \
+		-mkfs-time "$(LINUXAPPS_MKFS_TIME)" \
+		-all-root
+	printf '\163\150\163\161' | dd of="$@" bs=1 seek=0 count=4 conv=notrunc status=none
+	printf '\001\000' | dd of="$@" bs=1 seek=$$((0x14)) count=2 conv=notrunc status=none
+
+clean-linuxapps:
+	rm -f "$(LINUXAPPS_IMAGE)"
+
+pack-linuxapps: $(LINUXAPPS_IMAGE)

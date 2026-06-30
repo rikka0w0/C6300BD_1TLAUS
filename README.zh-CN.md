@@ -1,5 +1,11 @@
 本Repo包含了C6300BD_1TLAUS这款pre-NBN DOCSIS3.0 modem的魔改教程。
 
+ * 开启Telnet访问（Linux侧）
+ * 增加Dropbear SSH服务器
+ * 利用闲置的linuxapps分区存放更多数据
+ * SSH进入Linux侧之后访问eCos侧的Shell
+ * 远程重启
+
 __本教程需要自备一个USB-TTL转接线用于访问串口控制台，应用patch需要Linux系统(WSL2已测试)__
 
 # 备份
@@ -86,7 +92,7 @@ __这是个可选项，一般建议跳过！__
 
 产生的`C6300BD_1TLAUS_K2630_PATCHED.bin`可用于刷机。
 
-# 刷写Patch过的固件
+## 刷写Patch过的固件
 首先把Modem关机，然后用网线连到PC上，另一端接入任意Modem的LAN口。把PC相应网络接口的IP设为静态的`192.168.0.3`，子网掩码`255.255.255.0`，不用设置网关：
 ```bash
 sudo ip link set enx00e04d69792e up
@@ -173,6 +179,52 @@ Store parameters to flash? [n]
 ```
 回到`Main Menu`后，可以按`b`继续启动，进入新固件。
 
+# 利用linuxapps分区
+根据rcS脚本可知，`/dev/mtdblock3`这个名为linuxapps的分区在启动时可能会被以UBIFS或者JFFS2进行挂载。
+我尝试过从[GPL源码](https://archive.org/download/netgearfirmwaresgpl/C6300BD_1TLAUS_v1.01.03_src_20140319.zip)中静态编译mtd-utils然后在设备上创建并挂载UBIFS和用固件自带的`flash_eraseall`去格式化为JFFS2，全部都在挂载那一步失败了。
+原因未知，我怀疑是厂家魔改了这两个文件系统的驱动。
+因为没有可用的linuxapps样本，无法分析究竟是什么导致的。
+
+这里只能采用笨办法，即直接向`/dev/mtdblock3`写入SquashFS镜像（当然得是魔改的），然后通过`startup.sh`在启动时进行挂载。
+此外，linuxapps中的startup.sh如果存在会在开机时自动被执行，linuxapps中的authorized_keys也会在Modem启动时被合并和采用。
+
+
+`linuxapps`文件夹中的所有文件可以通过如下命令打包成`build/mtdblock3.bin`:
+```bash
+chmod +x linuxapps/startup.sh
+make clean-linuxapps
+make pack-linuxapps
+```
+然后把`build/mtdblock3.bin`放到USB Drive上，插到Modem上，然后使用dd刷写到`/dev/mtdblock3`。
+
+__如果在已挂载linuxapps之后尝试umount它，会产生Segmentation Fault然后Linux侧卡死。原因未知。__
+
+如果已经在启动时自动挂载了，则可以调用`/opt/set_no_mtd3_marker.sh`，这样在下次不下电的重启后linuxapps不会被挂载，此时可以使用dd刷写新的镜像到`/dev/mtdblock3`然后手动mount。
+
+__在Linux侧调用reboot并不能重启整个路由器，相反，它会导致卡死。__
+
+解决方法是调用`/opt/modem_restart.sh`，但是它需要[在Linux侧访问eCos Shell](#ecos-shell)里面的硬件改动。有时候一次会不成功，需要多次调用`/opt/modem_restart.sh`。
+
+
+<a id="ecos-shell"></a>
+
+# 在Linux侧访问eCos Shell
+
+eCos的shell可以通过串口或者Telnet访问。前者比较简单，但是无法通过网络远程访问。
+
+Telnet则需要在先从串口进入shell再通过命令`/msgLog/remoteAccess/restart_server telnet`开启，做不到开机自启动。
+
+我想了一个绕过的方法，使用导线交叉连接PCB上J360和J361中间的两个引脚（RX-TX和TX-RX），同时需要短接JP360（那个2-Pin Header），这样就可以在Linux侧通过`/dev/ttyS0`访问eCos的串口shell了(/opt/busybox-mips microcom -s 115200 /dev/ttyS0)。不过这种方法显示出来的shell有很多乱码。
+
+但是此时就可以通过调用`/opt/modem_start_telnet.sh`去开启eCos的Telnet了。有时候一次会不成功，需要多次调用`/opt/modem_start_telnet.sh`。
+
+可以使用`/opt/busybox-mips telnet 192.168.0.1`去连接。`ctrl+]`可以退出。用户名和密码分别是`admin`和`password`。
+
+在telnet中执行`/reset`可以进行重启。
+
+__此方法看不到eCos启动时的日志，也看不到Bootloader的菜单！__
+
 # 相关资料
 1. [NetGear GPL源码](https://archive.org/download/netgearfirmwaresgpl)
 2. [OpenWrt Wiki上的C6300BD_TLAUS](https://openwrt.org/inbox/toh/netgear/c6300bd-1tlaus)
+3. [/opt/busybox-mips](https://www.zhiwanyuzhou.com/download/Software/busybox/busybox-mips)
