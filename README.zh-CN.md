@@ -73,6 +73,8 @@ make dropbearkey-host-gen-hostkey
 
 注意：为了安全考虑，默认禁用了密码登录，可以把`startup.sh`里dropbear的`-s`去掉开启密码登录。
 
+如果需要公网访问，可以在Modem管理网页中加入一个到`192.168.0.200:22`的Port Forwarding。
+
 ## 重新打包Linux侧固件
 `make pack-linux-rootfs`
 
@@ -229,7 +231,12 @@ Destination image
 (0-3)[2]:
 ```
 
-之后在Linux侧可以直接通过`/opt/busybox-mips telnet 192.168.0.1`去连接。`ctrl+]`可以退出。用户名和密码分别是`admin`和`password`。
+之后在Linux侧可以直接通过`/opt/busybox-mips telnet 192.168.0.1`去连接。`ctrl+]`可以退出。
+有可能需要登录两次，第一次用户名和密码分别是`admin`和`password`，第二次用户名和密码分别是`MSO`和`changeme`。
+
+使用`MSO`+`changeme`登录过后，应该直接用`admin`+`password`就可以了。
+
+如果显示`Invalid login...`，可以交换之后再重试一下。此外，逆向工程在固件中还发现了`factory`+`z^Yq2c(jSv`这个密码组合。
 
 在telnet中执行`/reset`可以进行重启。
 
@@ -238,6 +245,8 @@ Destination image
 我想了一个绕过的方法，使用导线交叉连接PCB上J360和J361中间的两个引脚（RX-TX和TX-RX），同时需要短接JP360（那个2-Pin Header），这样就可以在Linux侧通过`/dev/ttyS0`访问eCos的串口shell了(/opt/busybox-mips microcom -s 115200 /dev/ttyS0)。不过这种方法显示出来的shell有很多乱码。
 
 但是此时就可以通过调用`/opt/modem_start_telnet.sh`去开启eCos的Telnet了。有时候一次会不成功，需要多次调用`/opt/modem_start_telnet.sh`。
+
+用户名和密码分别是`admin`和`password`。
 
 __此方法看不到eCos启动时的日志，也看不到Bootloader的菜单！__
 

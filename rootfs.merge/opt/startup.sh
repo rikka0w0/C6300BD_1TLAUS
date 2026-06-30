@@ -54,6 +54,11 @@ fi
 
 [ -f /root/.ssh/authorized_keys ] && chmod 600 /root/.ssh/authorized_keys
 
+# Use a fallback DNS server when DHCP did not create resolv.conf.
+if [ ! -s /etc/resolv.conf ]; then
+    echo "nameserver 8.8.8.8" > /var/fyi/sys/dns
+fi
+
 if [ -f /mnt/mtdblock3/startup.sh ]; then
     /mnt/mtdblock3/startup.sh || true
 fi
