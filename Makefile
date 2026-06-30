@@ -32,6 +32,7 @@ ROOTFS_HOST_COMMANDS := mksquashfs unsquashfs fakeroot
 
 include $(ROOT_DIR)/common.mk
 include $(ROOT_DIR)/dropbear.mk
+include $(ROOT_DIR)/ecos.mk
 
 .PHONY: check-host-packages clean clean-linux clean-linuxapps
 
@@ -41,7 +42,7 @@ $(BUILD_ROOT) $(DOWNLOAD_DIR):
 check-host-packages:
 	$(call check-host-commands,$(ROOTFS_HOST_COMMANDS))
 
-clean: clean-linux clean-dropbear clean-dropbear-host clean-linuxapps
+clean: clean-linux clean-dropbear clean-dropbear-host clean-linuxapps clean-ecos
 
 clean-linux:
 	rm -rf \
