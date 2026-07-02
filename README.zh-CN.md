@@ -258,10 +258,14 @@ __此方法看不到eCos启动时的日志，也看不到Bootloader的菜单！_
 
 也就是说，可以先从公网SSH进入Linux侧，然后在Linux侧telnet到eCos Shell，然后执行如下命令刷新Linux固件，重启后生效：
 ```
+/snoop/enable (25) false
 /ip_hal/dload (4) -i 3 192.168.0.3  C6300BD_1TLAUS_K2630_PATCHED.bin
+/snoop/enable (25) true
 /reset
 ```
 上面`(4)`对应LAN侧。如果是WAN侧则需要换成`(3)`。
+
+`/snoop/enable (25) false`临时禁用eCos里的第25个firewall snoop实例，这个snoop负责在packet path上按IPv4 firewall规则检查并丢包。禁用后它会让包直接pass-through，这样才能实现从LAN侧IP进行TFTP更新。__风险是会临时放宽防火墙的IPv4包过滤，因此刷机完成后建议立刻再次启用(snoop 25`/snoop/enable (25) true`)或者(`/reset`)重启__
 
 # 相关资料
 1. [NetGear GPL源码](https://archive.org/download/netgearfirmwaresgpl)
