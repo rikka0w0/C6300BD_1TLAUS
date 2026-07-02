@@ -6,6 +6,7 @@ DOWNLOAD_DIR ?= $(ROOT_DIR)/downloads
 LINUX_FIRMWARE_PACK_IN ?= $(ROOT_DIR)/stock-nand/C6300BD_1TLAUS_K2630V1.01.06u_140526.bin
 ENABLE_TELNET ?= 1
 ENABLE_DROPBEAR ?= 1
+ENABLE_CURL ?= 1
 LINUX_KERNEL_RW_ALL_MTD ?= 0
 PROGRAMSTORE_URL ?= https://github.com/rikka0w0/aeolus/releases/download/C6300BD-1TLAUS/ProgramStore_linux_amd64
 
@@ -28,10 +29,11 @@ LINUXAPPS_IMAGE := $(BUILD_ROOT)/mtdblock3.bin
 LINUXAPPS_BLOCK_SIZE ?= 65536
 LINUXAPPS_MKFS_TIME ?= 1401088145
 ROOTFS_HOST_COMMANDS := mksquashfs unsquashfs fakeroot
-.DEFAULT_GOAL := pack-firmware
+.DEFAULT_GOAL := pack-linux-firmware
 
 include $(ROOT_DIR)/common.mk
 include $(ROOT_DIR)/dropbear.mk
+include $(ROOT_DIR)/curl.mk
 include $(ROOT_DIR)/ecos.mk
 
 .PHONY: check-host-packages clean clean-linux clean-linuxapps
@@ -42,7 +44,7 @@ $(BUILD_ROOT) $(DOWNLOAD_DIR):
 check-host-packages:
 	$(call check-host-commands,$(ROOTFS_HOST_COMMANDS))
 
-clean: clean-linux clean-dropbear clean-dropbear-host clean-linuxapps clean-ecos
+clean: clean-linux clean-dropbear clean-dropbear-host clean-curl clean-linuxapps clean-ecos
 
 clean-linux:
 	rm -rf \
@@ -106,12 +108,24 @@ ifeq ($(ENABLE_DROPBEAR),1)
 	$(call stage-dropbear-in-rootfs,$(ROOTFS_FAKEROOT))
 endif
 
+ifeq ($(ENABLE_CURL),1)
+	# Install curl
+	mkdir -p "$(ROOTFS_FAKEROOT)/bin" "$(ROOTFS_FAKEROOT)/etc/ssl/certs"
+	cp "$(CURL_BIN)" "$(ROOTFS_FAKEROOT)/bin/curl"
+	chmod 755 "$(ROOTFS_FAKEROOT)/bin/curl"
+	cp /etc/ssl/certs/ca-certificates.crt "$(ROOTFS_FAKEROOT)/etc/ssl/certs/ca-certificates.crt"
+	chmod 644 "$(ROOTFS_FAKEROOT)/etc/ssl/certs/ca-certificates.crt"
+endif
+
 	"$(ROOT_DIR)/c6300bd-sqfs-pack.sh" -f "$(ROOTFS_FAKEROOT)" "$@"
 
 pack-linux-rootfs: $(PATCHED_LINUX_ROOTFS)
 
 ifeq ($(ENABLE_DROPBEAR),1)
 $(PATCHED_LINUX_ROOTFS): $(DROPBEAR_MULTI) | dropbearkey-host-gen-hostkey
+endif
+ifeq ($(ENABLE_CURL),1)
+$(PATCHED_LINUX_ROOTFS): $(CURL_BIN)
 endif
 
 $(PATCHED_FIRMWARE): $(PROGRAMSTORE) $(PATCHED_LINUX_KERNEL) $(PATCHED_LINUX_ROOTFS) | $(BUILD_ROOT)
@@ -124,7 +138,7 @@ $(PATCHED_FIRMWARE): $(PROGRAMSTORE) $(PATCHED_LINUX_KERNEL) $(PATCHED_LINUX_ROO
 		-s a0eb \
 		-v 0114.0514
 
-pack-firmware: $(PATCHED_FIRMWARE)
+pack-linux-firmware: $(PATCHED_FIRMWARE)
 
 $(LINUXAPPS_IMAGE): $(LINUXAPPS_DIR) $(LINUXAPPS_FILES) | $(BUILD_ROOT)
 	@command -v mksquashfs >/dev/null 2>&1 || { echo "error: missing required host command(s): mksquashfs" >&2; exit 1; }

@@ -6,6 +6,7 @@
  * SSH进入Linux侧之后访问eCos侧的Shell
  * 远程重启
  * 远程更新Linux侧固件
+ * curl，用于发送GET/POST HTTP请求等
 
 __本教程需要自备一个USB-TTL转接线用于访问串口控制台，应用patch需要Linux系统(WSL2已测试)__
 
