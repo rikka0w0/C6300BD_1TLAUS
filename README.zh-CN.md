@@ -94,7 +94,7 @@ __这是个可选项，一般建议跳过！__
 
 
 ## 打包固件
-`make pack-firmware`
+`make pack-linux-firmware`
 
 产生的`C6300BD_1TLAUS_K2630_PATCHED.bin`可用于刷机。
 
@@ -218,11 +218,13 @@ __在Linux侧调用reboot并不能重启整个路由器，相反，它会导致�
 
 eCos的shell可以通过串口或者Telnet访问。前者比较简单，但是无法直接通过网络远程访问。
 
+在原版固件中，
 Telnet则需要在先从串口进入shell再通过命令`/msgLog/remoteAccess/restart_server telnet`开启，做不到开机自启动。
 
 ## 新方法（需要patch eCos）
 
-通过逆向工程，我发现eCos的Telnet有一个全局开关，这个开关的状态和`/non-vol/userif/telnet_enable`的值进行逻辑与之后才决定是否开启Telnet服务。
+通过逆向工程，我发现eCos的Telnet有一个全局开关（在0x814FD43F, 1字节）
+，这个开关的状态和`/non-vol/userif/telnet_enable`的值进行逻辑与之后才决定是否开启Telnet服务。
 这个全局开关的初始值是0，在某个函数中通过DOCSIS下发的VSIF消息再次设置它的值。我们肯定没办法通过DOCSIS下发的VSIF消息，因此只能去patch eCos固件了，让这个全局开关始终为1。
 
 运行`make pack-ecos`之后可以获得`build/C6300BD_1TLAUS_V1.04.13u_TELNET.bin`，通过Bootloader可以下载，唯一不同是这一步要选择1：
@@ -299,3 +301,4 @@ __Linux侧telnet服务器已改为仅IPv4访问，防止被IPv6公网访问到__
 1. [NetGear GPL源码](https://archive.org/download/netgearfirmwaresgpl)
 2. [OpenWrt Wiki上的C6300BD_TLAUS](https://openwrt.org/inbox/toh/netgear/c6300bd-1tlaus)
 3. [/opt/busybox-mips](https://www.zhiwanyuzhou.com/download/Software/busybox/busybox-mips)
+4. [Docsis Ecos命令参考](https://www.innomedia.com/wp-content/uploads/2014/02/EMTA_6528-4B_Admin_Guide_v1_0.pdf)
