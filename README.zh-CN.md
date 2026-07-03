@@ -77,6 +77,8 @@ make dropbearkey-host-gen-hostkey
 
 如果需要公网访问，可以在Modem管理网页中加入一个到`192.168.0.200:22`的Port Forwarding。
 
+这里的Dropbear使用老式Unix-style PTY才能正常分配PTY。但是由于内核限制只能有俩PTY，所以很容易遇到`PTY allocation request failed on channel 0`这种错误。解决方法是`ssh root@LINUX_SIDE_IP -T /opt/pty-release-all.sh`来关闭所有占用PTY的程序。
+
 ## 重新打包Linux侧固件
 `make pack-linux-rootfs`
 
