@@ -267,6 +267,32 @@ __此方法看不到eCos启动时的日志，也看不到Bootloader的菜单！_
 
 `/snoop/enable (25) false`临时禁用eCos里的第25个firewall snoop实例，这个snoop负责在packet path上按IPv4 firewall规则检查并丢包。禁用后它会让包直接pass-through，这样才能实现从LAN侧IP进行TFTP更新。__风险是会临时放宽防火墙的IPv4包过滤，因此刷机完成后建议立刻再次启用(snoop 25`/snoop/enable (25) true`)或者(`/reset`)重启__
 
+# 开启IPv6
+进入eCos shell然后执行：
+```
+/non-vol/eRouter/ip_prov_mode 3
+/non-vol/write
+```
+可能还需要`/call function -r -a 0x8059B870`在不重启的情况下获取IPv6，不过我更建议去重启应用。这种情况下Linux侧也会获得公网可Ping通的IPv6。
+
+此外，可以临时手动获取IPv6，但是只限eCos侧，不会继续下发RA到Linux侧和LAN侧：
+```
+/ip_hal/ip_addr_show (2)
+/ip_hal/ipv6config (2) linklocal
+/ip_hal/ipv6config (4) linklocal
+/ip_hal/ipv6config (2) renew
+/ip_hal/ip_addr_show (2)
+/ip_hal/ip_addr_show (4)
+```
+
+IPv6防火墙相关:
+```
+/non-vol/eRouter/ipv6/firewall/firewall_enable
+/non-vol/eRouter/ipv6/firewall/fw_filter_show
+```
+
+__Linux侧telnet服务器已改为仅IPv4访问，防止被IPv6公网访问到__
+
 # 相关资料
 1. [NetGear GPL源码](https://archive.org/download/netgearfirmwaresgpl)
 2. [OpenWrt Wiki上的C6300BD_TLAUS](https://openwrt.org/inbox/toh/netgear/c6300bd-1tlaus)

@@ -44,7 +44,7 @@ $(BUILD_ROOT) $(DOWNLOAD_DIR):
 check-host-packages:
 	$(call check-host-commands,$(ROOTFS_HOST_COMMANDS))
 
-clean: clean-linux clean-dropbear clean-dropbear-host clean-curl clean-linuxapps clean-ecos
+clean: clean-linux clean-dropbear clean-dropbear-host clean-curl clean-curl-deps clean-linuxapps clean-ecos
 
 clean-linux:
 	rm -rf \
@@ -97,6 +97,8 @@ $(PATCHED_LINUX_ROOTFS): $(ROOTFS_FAKEROOT_STAMP) $(ROOTFS_MERGE) $(ROOTFS_MERGE
 	# /opt/startup.sh is our own startup script
 	if [ "$(ENABLE_TELNET)" = "1" ]; then \
 		sed -i "s|^\([[:space:]]*\)grep nouart /proc/cmdline > /dev/null|\1/bin/true # grep nouart /proc/cmdline > /dev/null|" \
+			"$(ROOTFS_FAKEROOT)/etc/init.d/rcS"; \
+		sed -i 's|^\([[:space:]]*\)telnetd &$$|\1telnetd -b 0.0.0.0:23 \&|' \
 			"$(ROOTFS_FAKEROOT)/etc/init.d/rcS"; \
 	fi
 	if ! sed -n '\|^/opt/startup\.sh$$|q 0; $$q 1' "$(ROOTFS_FAKEROOT)/etc/init.d/rcS"; then \
