@@ -185,7 +185,7 @@ Store parameters to flash? [n]
 ```
 回到`Main Menu`后，可以按`b`继续启动，进入新固件。
 
-# 利用linuxapps分区
+# 利用linuxapps分区(squashfs)
 根据rcS脚本可知，`/dev/mtdblock3`这个名为linuxapps的分区在启动时可能会被以UBIFS或者JFFS2进行挂载。
 我尝试过从[GPL源码](https://archive.org/download/netgearfirmwaresgpl/C6300BD_1TLAUS_v1.01.03_src_20140319.zip)中静态编译mtd-utils然后在设备上创建并挂载UBIFS和用固件自带的`flash_eraseall`去格式化为JFFS2，全部都在挂载那一步失败了。
 原因未知，我怀疑是厂家魔改了这两个文件系统的驱动。
@@ -211,6 +211,93 @@ __在Linux侧调用reboot并不能重启整个路由器，相反，它会导致�
 
 解决方法是调用`/opt/modem_restart.sh`，但是它需要[在Linux侧访问eCos Shell](#ecos-shell)里面的硬件改动。有时候一次会不成功，需要多次调用`/opt/modem_restart.sh`。
 
+
+# 利用linuxapps分区(ext4)
+
+除了SquashFS，也可以把linuxapps格式化成ext4，默认只读挂载，需要更新文件时临时remount为读写。
+这是实验方案：ext4不具备裸NAND管理能力，仍经过同一条厂家MTD/RPC读写路径，
+不能解决之前观察到的旧数据读取异常，也不能绕过ECC、OOB tag和坏块处理。
+
+`rootfs.merge/bin/mkfs.ext4`是从官方GPL源码包中的`e2fsprogs-1.41.14.tar.gz`
+编译出来的静态MIPS32大端、o32、soft-float程序。
+重新打包Linux侧rootfs后，工具和配置分别位于`/bin/mkfs.ext4`和`/bin/c6300bd-mke2fs.conf`。
+旧版工具和配套配置避免启用Linux 2.6.30不支持的`64bit`、`metadata_csum`等新特性。
+程序本身仍是通用格式化工具，必须使用下面的配置和显式参数来禁用日志。
+
+## 创建ext4文件系统
+
+__格式化会破坏linuxapps原有内容，并且实际写入NAND，请先备份重要数据。__
+在Linux侧检查分区、挂载状态和文件系统支持：
+
+```sh
+cat /proc/mtd
+cat /proc/mounts
+grep ext4 /proc/filesystems
+```
+
+确认`mtd3`是linuxapps，使用块设备`/dev/mtdblock3`，而不是字符设备`/dev/mtd3`。
+格式化前必须确认它没有挂载到任何目录，也没有被UBI attach。
+如果旧SquashFS无法安全卸载，按前面的说明调用`/opt/set_no_mtd3_marker.sh`后重启整个modem，
+不要强制格式化正在挂载的文件系统。
+
+```sh
+MKE2FS_CONFIG=/bin/c6300bd-mke2fs.conf /bin/mkfs.ext4 \
+    -t ext4 -b 4096 -I 256 -m 0 \
+    -O ^has_journal \
+    -E nodiscard,lazy_itable_init=0 \
+    /dev/mtdblock3
+```
+
+这些参数禁用日志和discard，并在格式化时完成inode表初始化，不把初始化留给后续挂载。
+不要加入`-c`/`-cc`坏块测试，也不要用`-F`绕过安全检查。
+如果出现I/O错误，先停止并检查`dmesg`，不要强行挂载或清除坏块标记。
+
+格式化成功后只读挂载：
+
+```sh
+mkdir -p /mnt/mtdblock3
+mount -t ext4 -o ro,noload /dev/mtdblock3 /mnt/mtdblock3
+grep ' /mnt/mtdblock3 ' /proc/mounts
+df -h /mnt/mtdblock3
+```
+
+开机时`/opt/startup.sh`先检查ext文件系统的超级块magic，再检查厂商SquashFS magic。
+ext4显式使用`ro,noload`挂载，SquashFS保持原来的挂载命令（文件系统本身只读）；不会自动格式化或调用修复工具。
+跳过下次挂载的内存标记只对SquashFS有效；ext4不会检查或清除该标记。
+分区根目录中的`startup.sh`和`authorized_keys`仍按原来的方式在启动时执行或加载。
+
+## 修改文件
+
+把已经挂载的ext4临时切换成读写：
+
+```sh
+mount -t ext4 -o remount,rw /dev/mtdblock3 /mnt/mtdblock3
+```
+
+然后编辑或复制文件。例如先把文件准备到`/tmp`中，再执行：
+
+```sh
+cp /tmp/startup.sh /mnt/mtdblock3/startup.sh
+chmod 755 /mnt/mtdblock3/startup.sh
+cp /tmp/authorized_keys /mnt/mtdblock3/authorized_keys
+```
+
+完成后刷新写入并恢复只读。如果任何一步失败，检查`dmesg`，不要认为数据已经安全保存：
+
+```sh
+sync
+mount -t ext4 -o remount,ro /dev/mtdblock3 /mnt/mtdblock3
+grep ' /mnt/mtdblock3 ' /proc/mounts
+```
+
+没有日志，写入时掉电或reset可能导致文件系统不一致。
+建议在整个modem重启后，不重新格式化，再检查文件是否仍然正确，避免把缓存命中当作持久化成功。
+
+__只读挂载不是NAND硬件写保护。__ 带日志的ext4即使使用`ro`仍可能回放日志，
+因此自动挂载显式加上`noload`（见[内核文档](https://docs.kernel.org/admin-guide/ext4.html)）。
+跳过不干净文件系统的日志回放不等于修复它。
+启动脚本避免文件系统层的写入，但不能阻止其它程序通过MTD或eCos写入。
+自定义的linuxapps `startup.sh`同样可以执行写入或remount，所以也应保持只读操作，除非明确需要修改。
 
 <a id="ecos-shell"></a>
 

@@ -248,7 +248,7 @@ Store parameters to flash? [n]
 
 After returning to `Main Menu`, press `b` to continue booting into the new firmware.
 
-# Using the linuxapps Partition
+# Using the linuxapps Partition(squashfs)
 
 According to the rcS script, `/dev/mtdblock3`, the partition named linuxapps,
 may be mounted as UBIFS or JFFS2 during startup.
@@ -297,6 +297,109 @@ The workaround is to call `/opt/modem_restart.sh`, but it requires the hardware
 modification described in [Accessing the eCos Shell from the Linux Side](#ecos-shell).
 Sometimes one attempt does not work, and `/opt/modem_restart.sh` needs to be run
 multiple times.
+
+# Using the linuxapps Partition(ext4)
+
+As an alternative to SquashFS, linuxapps can be formatted as ext4 and mounted
+read-only by default, then temporarily remounted read-write to update files.
+This is experimental: ext4 is not NAND-aware, and it still uses the same vendor
+MTD/RPC driver. It does not fix the previously observed stale-data reads or
+remove the need for ECC, OOB tags, and bad-block handling.
+
+`rootfs.merge/bin/mkfs.ext4` is a static MIPS32 big-endian, o32, soft-float build
+of `mke2fs` from the official GPL archive's `e2fsprogs-1.41.14.tar.gz`.
+It is installed as `/bin/mkfs.ext4` when the Linux rootfs is repacked, along with
+`/bin/c6300bd-mke2fs.conf`. This old version and the supplied configuration avoid
+modern ext4 features that Linux 2.6.30 cannot mount, such as `64bit` and
+`metadata_csum`. The binary is a general-purpose formatter; always use the
+configuration and explicit options below to disable journaling.
+
+## Creating the ext4 Filesystem
+
+__Formatting destroys the existing contents of linuxapps and writes to NAND.
+Back up anything important first.__ On the Linux side, check the device and
+filesystem support:
+
+```sh
+cat /proc/mtd
+cat /proc/mounts
+grep ext4 /proc/filesystems
+```
+
+Confirm that `mtd3` is linuxapps. Use the block device `/dev/mtdblock3`, not the
+character device `/dev/mtd3`. Before formatting, ensure it is not mounted
+anywhere or attached to UBI. If the old SquashFS cannot be unmounted safely, use
+`/opt/set_no_mtd3_marker.sh` and reboot the whole modem as described above;
+do not force formatting of a mounted filesystem.
+
+```sh
+MKE2FS_CONFIG=/bin/c6300bd-mke2fs.conf /bin/mkfs.ext4 \
+    -t ext4 -b 4096 -I 256 -m 0 \
+    -O ^has_journal \
+    -E nodiscard,lazy_itable_init=0 \
+    /dev/mtdblock3
+```
+
+This creates a filesystem without a journal, disables discard, and initializes
+the inode tables during formatting rather than leaving that work to a later
+mount. Do not add `-c`/`-cc` bad-block tests or `-F` to bypass safety checks.
+If formatting reports I/O errors, stop and inspect `dmesg` rather than forcing
+a mount or erasing bad-block markers.
+
+After successful formatting, mount it read-only:
+
+```sh
+mkdir -p /mnt/mtdblock3
+mount -t ext4 -o ro,noload /dev/mtdblock3 /mnt/mtdblock3
+grep ' /mnt/mtdblock3 ' /proc/mounts
+df -h /mnt/mtdblock3
+```
+
+At boot, `/opt/startup.sh` checks for the ext filesystem superblock magic first,
+then for the vendor SquashFS magic. It mounts ext4 with explicit `ro,noload`
+options, or SquashFS with the original mount command (SquashFS is inherently
+read-only). It never formats the partition or runs a repair tool automatically.
+The skip-mount marker applies only to SquashFS; ext4 neither checks nor clears it.
+Both formats support the existing
+`startup.sh` and `authorized_keys` files in the partition root.
+
+## Updating Files
+
+Temporarily allow writes on an already mounted ext4 filesystem:
+
+```sh
+mount -t ext4 -o remount,rw /dev/mtdblock3 /mnt/mtdblock3
+```
+
+Copy or edit files under `/mnt/mtdblock3`. For example, after preparing the
+files in `/tmp`:
+
+```sh
+cp /tmp/startup.sh /mnt/mtdblock3/startup.sh
+chmod 755 /mnt/mtdblock3/startup.sh
+cp /tmp/authorized_keys /mnt/mtdblock3/authorized_keys
+```
+
+When finished, flush writes and restore read-only mode. If either command fails,
+check `dmesg` and do not assume the changes are safely stored:
+
+```sh
+sync
+mount -t ext4 -o remount,ro /dev/mtdblock3 /mnt/mtdblock3
+grep ' /mnt/mtdblock3 ' /proc/mounts
+```
+
+There is no journal, so power loss or resetting while writing can leave an
+inconsistent filesystem. Verify files again after a full modem reboot, without
+reformatting, because immediate reads can be served from cache.
+
+__Read-only is not hardware NAND write protection.__ A journaled ext4 filesystem
+can replay its journal even with `ro`; `noload` prevents that replay
+([kernel documentation](https://docs.kernel.org/admin-guide/ext4.html)). Do not
+treat skipping replay on an unclean filesystem as a repair. The automatic mount
+avoids filesystem-level writes, but cannot prevent another process from writing
+through MTD or the eCos side. A custom linuxapps `startup.sh` can also issue its
+own writes or remount commands, so keep it read-only unless explicitly needed.
 
 <a id="ecos-shell"></a>
 

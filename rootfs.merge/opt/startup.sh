@@ -26,8 +26,12 @@ mkdir -p /var/run
   -r /etc/dropbear/dropbear_ed25519_host_key \
   -p 22 -s
 
-# Mount extra SquashFS, if present
-if [ "$(dd if=/dev/mtdblock3 bs=1 count=4 2>/dev/null)" = "shsq" ]; then
+# Mount extra ext4 or SquashFS read-only, if present
+if [ "$(dd if=/dev/mtdblock3 bs=1 skip=1080 count=2 2>/dev/null)" = "$(/opt/busybox-mips printf '\123\357')" ]; then
+    echo "Mounting /mnt/mtdblock3: ext4 magic found"
+    mkdir -p /mnt/mtdblock3
+    mount -t ext4 -o ro,noload /dev/mtdblock3 /mnt/mtdblock3
+elif [ "$(dd if=/dev/mtdblock3 bs=1 count=4 2>/dev/null)" = "shsq" ]; then
     if [ "$(dd if=/dev/mem bs=1 skip=$((0x07FFFFF0)) count=16 2>/dev/null)" = "C6300BD_NO_MTD3!" ]; then
         echo "Skipping /mnt/mtdblock3 mount: skip marker found"
         dd if=/dev/zero of=/dev/mem bs=1 seek=$((0x07FFFFF0)) count=16 conv=notrunc 2>/dev/null || true
